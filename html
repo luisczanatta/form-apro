@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Aprovisionamiento Matutino</title>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 15px; max-width: 400px; margin: auto; background-color: #f0f0f0; }
+    .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+    h2 { text-align: center; color: #e10098; margin-top: 0; }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; margin-bottom: 5px; font-weight: bold; color: #333; font-size: 14px;}
+    input, select, textarea { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; }
+    button { background-color: #e10098; color: white; padding: 12px; border: none; width: 100%; border-radius: 6px; font-size: 16px; cursor: pointer; font-weight: bold; margin-bottom: 10px; }
+    button:active { background-color: #b00076; }
+    button.cam-btn { background-color: #333; }
+    #reader { width: 100%; margin-top: 10px; display: none; border-radius: 6px; overflow: hidden; }
+    #status { margin-top: 10px; font-weight: bold; text-align: center; padding: 10px; border-radius: 6px;}
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h2>Aprovisionamiento</h2>
+    <div class="form-group">
+      <label for="bodega">Bodega</label>
+      <select id="bodega">
+        <option value="">Selecciona...</option>
+        <option value="Bodega 1">Bodega 1</option>
+        <option value="Bodega 2">Bodega 2</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="colaborador">No. Colaborador</label>
+      <input type="number" id="colaborador" placeholder="Ej. 123456">
+    </div>
+    <div class="form-group">
+      <label for="skus">SKUs (Puedes escanear varios)</label>
+      <textarea id="skus" rows="4" placeholder="Los códigos irán apareciendo aquí..."></textarea>
+    </div>
+
+    <button class="cam-btn" type="button" id="btnCamara" onclick="toggleCamara()">📷 Iniciar Escáner</button>
+    <div id="reader"></div>
+
+    <button type="button" onclick="guardarRegistro()">Enviar Todo</button>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    // --- PON AQUÍ TU URL DE GOOGLE APPS SCRIPT ---
+    const SCRIPT_URL = "URL_DE_TU_GOOGLE_SCRIPT_AQUI"; 
+
+    let html5QrCode;
+    let camaraEncendida = false;
+    let ultimoEscaneado = "";
+
+    function toggleCamara() {
+      if (!html5QrCode) {
+        html5QrCode = new Html5Qrcode("reader");
+      }
+
+      if (camaraEncendida) {
+        html5QrCode.stop().then(() => {
+          document.getElementById('reader').style.display = 'none';
+          document.getElementById('btnCamara').innerText = '📷 Iniciar Escáner';
+          camaraEncendida = false;
+        });
+      } else {
+        document.getElementById('reader').style.display = 'block';
+        html5QrCode.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 250, height: 100 } },
+          onScanSuccess,
+          onScanFailure
+        ).then(() => {
+          document.getElementById('btnCamara').innerText = '⏹ Detener Escáner';
+          camaraEncendida = true;
+        }).catch(err => {
+          document.getElementById('status').innerText = '⚠️ Error: Otorga permisos de cámara en tu navegador.';
+        });
+      }
+    }
+
+    function onScanSuccess(decodedText) {
+      if (decodedText !== ultimoEscaneado) {
+        ultimoEscaneado = decodedText;
+        let textarea = document.getElementById('skus');
+        textarea.value = textarea.value === "" ? decodedText : textarea.value + "\n" + decodedText;
+        document.getElementById('status').innerText = '✅ Añadido: ' + decodedText;
+        document.getElementById('status').style.color = '#3c763d';
+        setTimeout(() => { ultimoEscaneado = ""; }, 2000);
+      }
+    }
+
+    function onScanFailure(error) {}
+
+    function guardarRegistro() {
+      const bodega = document.getElementById('bodega').value;
+      const colaborador = document.getElementById('colaborador').value;
+      const skus = document.getElementById('skus').value;
+      const statusDiv = document.getElementById('status');
+
+      if(!bodega || !colaborador || !skus) {
+        statusDiv.innerText = '⚠️ Falta la bodega, colaborador o no hay productos.';
+        return;
+      }
+
+      statusDiv.innerText = '⏳ Guardando...';
+      if (camaraEncendida) toggleCamara();
+
+      // Enviamos los datos a Google Script usando fetch
+      fetch(SCRIPT_URL, {
+        method: 'POST',
+        // Usamos text/plain para evitar errores de CORS con Google Script
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ bodega: bodega, colaborador: colaborador, skus: skus })
+      })
+      .then(response => response.text())
+      .then(resultado => {
+        statusDiv.innerText = resultado;
+        document.getElementById('skus').value = ''; 
+      })
+      .catch(error => {
+        statusDiv.innerText = '⚠️ Error de conexión.';
+      });
+    }
+  </script>
+</body>
+</html>
